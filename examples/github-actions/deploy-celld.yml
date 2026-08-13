@@ -1,0 +1,111 @@
+name: Deploy to celld on Railway
+
+# Copy this file into your Wrangler project's .github/workflows directory.
+# It stays outside this repository's .github/workflows so it cannot deploy the
+# bundled starter by mistake.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  attestations: read
+
+# celld publishes one fleet-wide deployment pointer. Never let two deploys race
+# or cancel a run after it has committed the pointer but before it restarts the
+# node.
+concurrency:
+  group: celld-production
+  cancel-in-progress: false
+
+env:
+  # Keep this at or below the celld version used by the Railway service image.
+  CELLD_VERSION: v0.2.0
+  CELLD_PROJECT_PATH: .
+  RAILWAY_SERVICE: celld
+  RAILWAY_CLI_VERSION: 5.40.0
+  ESBUILD_VERSION: 0.28.2
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout application
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Node.js
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+
+      # Replace this step with pnpm/yarn/bun installation when the application
+      # uses another package manager. Asset-only projects can omit it.
+      - name: Install application dependencies
+        working-directory: ${{ env.CELLD_PROJECT_PATH }}
+        run: |
+          if [[ -f package-lock.json ]]; then
+            npm ci
+          elif [[ -f package.json ]]; then
+            echo "::warning::package.json exists without package-lock.json; skipping dependency installation"
+          fi
+
+      - name: Install pinned deployment tools
+        run: |
+          npm install --global --no-audit --no-fund \
+            "@railway/cli@${RAILWAY_CLI_VERSION}" \
+            "esbuild@${ESBUILD_VERSION}"
+          railway --version
+          esbuild --version
+
+      # celld release binaries have GitHub build attestations. Verify the exact
+      # downloaded archive before it is allowed to handle bucket credentials.
+      - name: Install and verify celld
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ ! "$CELLD_VERSION" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Invalid CELLD_VERSION: $CELLD_VERSION" >&2
+            exit 1
+          fi
+
+          archive="$RUNNER_TEMP/celld-x86_64-unknown-linux-gnu.gz"
+          curl --proto '=https' --tlsv1.2 --fail --location --retry 3 \
+            --output "$archive" \
+            "https://github.com/denoland/celld/releases/download/${CELLD_VERSION}/celld-x86_64-unknown-linux-gnu.gz"
+          gh attestation verify "$archive" --repo denoland/celld
+
+          mkdir -p "$HOME/.local/bin"
+          gzip --decompress --stdout "$archive" > "$HOME/.local/bin/celld"
+          chmod 0755 "$HOME/.local/bin/celld"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+          "$HOME/.local/bin/celld" --version
+
+      # A Railway project token identifies its project and environment. railway
+      # run injects the celld service's bucket variables only for this step.
+      - name: Commit application deployment
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: |
+          if [[ -z "$RAILWAY_TOKEN" ]]; then
+            echo "Missing GitHub Actions secret: RAILWAY_TOKEN" >&2
+            exit 1
+          fi
+          railway run --service "$RAILWAY_SERVICE" --no-local -- \
+            celld deploy "$CELLD_PROJECT_PATH"
+
+      # Existing nodes keep serving their startup deployment. Railway restart
+      # reuses the tested image and waits until its healthcheck passes.
+      - name: Restart celld node
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
+        run: railway restart --service "$RAILWAY_SERVICE" --yes
+
+      - name: Deployment summary
+        run: |
+          {
+            echo '### celld deployment complete'
+            echo
+            echo "Committed the application with \`${CELLD_VERSION}\` and restarted Railway service \`${RAILWAY_SERVICE}\`."
+          } >> "$GITHUB_STEP_SUMMARY"

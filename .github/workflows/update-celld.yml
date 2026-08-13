@@ -2,7 +2,8 @@ name: update-celld
 
 # Keep the template on an immutable, tested celld release instead of pulling a
 # mutable `latest` tag into production. A new official release is committed to
-# main only after the Railway wrapper and starter pass their smoke tests.
+# main only after the Railway wrapper and starter pass their smoke tests. The
+# copy-ready application deployment workflow is kept on the same celld version.
 on:
   schedule:
     - cron: "17 */6 * * *"
@@ -54,13 +55,17 @@ jobs:
             echo "Already current ($current)"
           fi
 
-      - name: Update the immutable image pin
+      - name: Update the immutable celld pins
         if: steps.version.outputs.changed == 'true'
         env:
           VERSION: ${{ steps.version.outputs.latest }}
         run: |
           sed -i -E "s/^ARG CELLD_VERSION=.*/ARG CELLD_VERSION=${VERSION}/" Dockerfile
+          sed -i -E "s/^  CELLD_VERSION: v.*/  CELLD_VERSION: v${VERSION}/" \
+            examples/github-actions/deploy-celld.yml
           grep -qxF "ARG CELLD_VERSION=${VERSION}" Dockerfile
+          grep -qxF "  CELLD_VERSION: v${VERSION}" \
+            examples/github-actions/deploy-celld.yml
 
       - name: Set up Docker Buildx
         if: steps.version.outputs.changed == 'true'
@@ -88,7 +93,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Dockerfile
+          git add Dockerfile examples/github-actions/deploy-celld.yml
           git commit -m "Bump celld from ${OLD_VERSION} to ${NEW_VERSION}"
           git push origin HEAD:main
 

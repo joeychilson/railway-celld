@@ -119,6 +119,32 @@ not change.
 A fleet bucket runs **one application deployment**. Use a separate bucket or a
 unique `s3://bucket/prefix` for each independent application.
 
+### Deploy automatically with GitHub Actions
+
+Use the copy-ready
+[`examples/github-actions/deploy-celld.yml`](examples/github-actions/deploy-celld.yml)
+workflow in your **Wrangler application repository**:
+
+1. In Railway, open the deployed project and create a project token for the
+   target environment under **Project Settings → Tokens**.
+2. In the application repository, add that token as a GitHub Actions repository
+   secret named `RAILWAY_TOKEN`.
+3. Copy the example to `.github/workflows/deploy.yml` in that repository.
+4. Adjust `CELLD_PROJECT_PATH` for a monorepo, `RAILWAY_SERVICE` if the service
+   was renamed, and `CELLD_VERSION` when intentionally upgrading celld.
+5. If the project uses pnpm, Yarn, or Bun, replace the example's npm dependency
+   step with the appropriate frozen-lockfile install.
+
+Pushes to `main` then install an attested celld release, run `celld deploy`
+with the bucket variables injected from Railway, and restart the node. Railway's
+restart command waits for the configured `/__celld/health` check to pass.
+
+The project token can read the celld service variables, including the
+fleet-administrator bucket credentials. Scope it to the intended environment,
+store it only as a GitHub secret, and do not expose this workflow to untrusted
+pull-request code. The workflow serializes deployments because celld publishes
+one fleet-wide deployment pointer and a node loads it only at startup.
+
 ## Add nodes
 
 Do not scale this volume-backed service with Railway replicas. Replicas cannot
@@ -163,7 +189,7 @@ might need a new container even when celld itself remains at `0.2.0`.
 Every six hours, [`update-celld.yml`](.github/workflows/update-celld.yml):
 
 1. checks the latest non-prerelease GitHub release from `denoland/celld`;
-2. updates the immutable upstream pin;
+2. updates the immutable upstream and example deployment-workflow pins;
 3. builds and smoke-tests the candidate;
 4. commits only when those tests pass; and
 5. dispatches the image publisher, which tests again before moving `latest`.
