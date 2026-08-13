@@ -78,7 +78,7 @@ pass "public requests reach the deployed Worker"
 
 uid="$(docker exec "$NAME" stat -c '%u' /var/lib/celld/state)"
 [[ "$uid" = "10001" ]] || fail "state directory UID is $uid, expected 10001"
-process_uid="$(docker exec "$NAME" sh -c "awk '/^Uid:/ { print \\$2 }' /proc/1/status")"
+process_uid="$(docker exec "$NAME" sh -c "awk '/^Uid:/ { print \$2 }' /proc/1/status")"
 [[ "$process_uid" = "10001" ]] || fail "PID 1 UID is $process_uid, expected 10001"
 pass "runtime is unprivileged and can write the root-owned volume"
 
