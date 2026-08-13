@@ -1,0 +1,92 @@
+name: update-celld
+
+# Keep the template on an immutable, tested celld release instead of pulling a
+# mutable `latest` tag into production. A new official release is committed to
+# main only after the Railway wrapper and starter pass their smoke tests.
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: update-celld
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check the latest official celld release
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh api repos/denoland/celld/releases/latest --jq .tag_name)"
+          latest="${tag#v}"
+          if ! printf '%s' "$latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Unexpected celld release tag: '$tag'" >&2
+            exit 1
+          fi
+
+          current="$(sed -n 's/^ARG CELLD_VERSION=//p' Dockerfile)"
+          if ! printf '%s' "$current" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Unexpected Dockerfile pin: '$current'" >&2
+            exit 1
+          fi
+
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$latest" != "$current" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "Updating celld $current -> $latest"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "Already current ($current)"
+          fi
+
+      - name: Update the immutable image pin
+        if: steps.version.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.latest }}
+        run: |
+          sed -i -E "s/^ARG CELLD_VERSION=.*/ARG CELLD_VERSION=${VERSION}/" Dockerfile
+          grep -qxF "ARG CELLD_VERSION=${VERSION}" Dockerfile
+
+      - name: Set up Docker Buildx
+        if: steps.version.outputs.changed == 'true'
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build candidate image
+        if: steps.version.outputs.changed == 'true'
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          tags: railway-celld:candidate
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test candidate
+        if: steps.version.outputs.changed == 'true'
+        run: ./test/smoke-test.sh railway-celld:candidate
+
+      - name: Commit tested update
+        if: steps.version.outputs.changed == 'true'
+        env:
+          OLD_VERSION: ${{ steps.version.outputs.current }}
+          NEW_VERSION: ${{ steps.version.outputs.latest }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Dockerfile
+          git commit -m "Bump celld from ${OLD_VERSION} to ${NEW_VERSION}"
+          git push origin HEAD:main
