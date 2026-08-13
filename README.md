@@ -70,8 +70,9 @@ Add a Railway Bucket. The person deploying the template chooses its region.
 
 ### `celld`
 
-Use this GitHub repository as the service source, attach a public domain on
-port `8080`, and attach a volume at `/var/lib/celld`.
+Use the public image `ghcr.io/joeychilson/railway-celld:latest` as the service
+source, enable Railway image auto-updates, attach a public domain on port
+`8080`, and attach a volume at `/var/lib/celld`.
 
 Set these service variables:
 
@@ -107,8 +108,9 @@ npm install --global esbuild  # Worker code needs it; asset-only projects do not
 railway link
 railway run --service celld -- celld deploy .
 
-# Restart the node so it loads the newly committed deployment.
-railway redeploy --service celld --yes
+# Restart the node so it loads the newly committed deployment. This keeps the
+# current tested container image and does not wait for an image update.
+railway restart --service celld --yes
 ```
 
 The starter page is replaced by your app. The public domain and fleet bucket do
@@ -131,31 +133,52 @@ Instead, duplicate the celld service for each additional node:
 
 The nodes discover one another through bucket leases; there is no join service.
 
-## Versioning and automatic updates
+## Container versioning and automatic updates
 
-This repository deliberately **does not use `ghcr.io/denoland/celld:latest`**.
-`Dockerfile` pins an immutable official release, currently expressed as
-`ARG CELLD_VERSION`.
+The template uses **our** tested channel:
+
+```text
+ghcr.io/joeychilson/railway-celld:latest
+```
+
+It deliberately does **not** run `ghcr.io/denoland/celld:latest` directly.
+`Dockerfile` pins an immutable official upstream release via
+`ARG CELLD_VERSION`. [`publish-image.yml`](.github/workflows/publish-image.yml)
+builds the wrapper, smoke-tests it, and only then publishes multi-platform
+Linux images for AMD64 and ARM64.
+
+Each publication gets four tags:
+
+| Tag | Mutability | Purpose |
+|---|---|---|
+| `latest` | Mutable | Tested update channel used by the Railway template |
+| `celld-0.2.0` | Mutable | Latest wrapper revision for one upstream celld release |
+| `0.2.0-r<run>.<attempt>` | Immutable | Human-readable celld version plus Railway-wrapper revision |
+| `sha-<commit>` | Immutable | Exact source rollback and audit tag |
+
+This versions the image *with* the celld version while retaining a packaging
+revision. A bare `0.2.0` tag would be ambiguous: a fix to the Railway entrypoint
+might need a new container even when celld itself remains at `0.2.0`.
 
 Every six hours, [`update-celld.yml`](.github/workflows/update-celld.yml):
 
 1. checks the latest non-prerelease GitHub release from `denoland/celld`;
-2. updates the exact image pin;
-3. builds the Railway wrapper and runs its smoke tests; and
-4. commits the pin to `main` only if those tests pass.
+2. updates the immutable upstream pin;
+3. builds and smoke-tests the candidate;
+4. commits only when those tests pass; and
+5. dispatches the image publisher, which tests again before moving `latest`.
 
-That gives new template deployments the newest tested celld release without a
-mutable tag changing underneath a build. Railway also detects updates to a
-GitHub-backed template and notifies existing users. Applying a template update
-is intentionally opt-in: celld is alpha, and releases may require a coordinated
-non-rolling upgrade. Review the [celld release notes](https://github.com/denoland/celld/releases)
-before applying an update to a multi-node fleet.
+Railway monitors the digest behind the non-semantic `latest` tag. With image
+auto-updates enabled, it redeploys during the configured maintenance window
+when this workflow publishes a new tested digest. Railway creates a volume
+backup first for eligible Pro deployments.
 
-Railway can auto-redeploy mutable image tags, but using upstream `latest`
-directly would bypass this template's private-network setup, empty-bucket
-bootstrap, volume permissions, and candidate smoke test. It would also make an
-incompatible alpha upgrade automatic. The tested immutable-pin workflow is the
-safer default.
+For production fleets, immutable tags remain available for pinning and
+rollback. Review the [celld release notes](https://github.com/denoland/celld/releases)
+before updating multiple nodes: celld is alpha and a release may require a
+coordinated non-rolling upgrade. The template's default one-node,
+volume-backed service has overlap disabled so old and new images are not run
+simultaneously.
 
 ## Security and operational notes
 

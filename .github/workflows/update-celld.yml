@@ -9,6 +9,7 @@ on:
   workflow_dispatch:
 
 permissions:
+  actions: write
   contents: write
 
 concurrency:
@@ -90,3 +91,11 @@ jobs:
           git add Dockerfile
           git commit -m "Bump celld from ${OLD_VERSION} to ${NEW_VERSION}"
           git push origin HEAD:main
+
+      # Pushes made with GITHUB_TOKEN do not trigger another workflow. Dispatch
+      # publication explicitly so every tested upstream bump reaches GHCR.
+      - name: Publish the updated image
+        if: steps.version.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run publish-image.yml --ref main -R ${{ github.repository }}

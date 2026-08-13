@@ -1,0 +1,118 @@
+name: publish-image
+
+# Publish the Railway wrapper only after its smoke test passes. `latest` is the
+# template's tested update channel; every publication also gets immutable tags
+# for auditability and rollback.
+on:
+  push:
+    branches: [main]
+    paths:
+      - Dockerfile
+      - entrypoint.sh
+      - starter/**
+      - test/**
+      - .github/workflows/publish-image.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: publish-image
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Read image versions
+        id: version
+        run: |
+          celld="$(sed -n 's/^ARG CELLD_VERSION=//p' Dockerfile)"
+          if ! printf '%s' "$celld" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Unexpected CELLD_VERSION: '$celld'" >&2
+            exit 1
+          fi
+
+          # The celld version is the compatibility-significant part. The
+          # publication revision distinguishes wrapper rebuilds/fixes that use
+          # the same celld release, so immutable tags are never reused.
+          image="${celld}-r${GITHUB_RUN_NUMBER}.${GITHUB_RUN_ATTEMPT}"
+          echo "celld=$celld" >> "$GITHUB_OUTPUT"
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "Publishing celld $celld as image revision $image"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
+
+      - name: Build test image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          load: true
+          push: false
+          tags: railway-celld:test
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: ./test/smoke-test.sh railway-celld:test
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+
+      - name: Log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate image metadata
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          flavor: latest=false
+          tags: |
+            type=raw,value=latest
+            type=raw,value=celld-${{ steps.version.outputs.celld }}
+            type=raw,value=${{ steps.version.outputs.image }}
+            type=sha
+          labels: |
+            org.opencontainers.image.title=celld for Railway
+            org.opencontainers.image.description=Railway-optimized celld runtime
+            org.opencontainers.image.version=${{ steps.version.outputs.image }}
+            org.opencontainers.image.base.name=ghcr.io/denoland/celld:${{ steps.version.outputs.celld }}
+
+      - name: Build and push multi-platform image
+        uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          annotations: ${{ steps.meta.outputs.annotations }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Publication summary
+        run: |
+          {
+            echo '### Published container'
+            echo
+            echo '- `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest`'
+            echo '- `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:celld-${{ steps.version.outputs.celld }}`'
+            echo '- `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ steps.version.outputs.image }}` (immutable)'
+            echo '- `${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${GITHUB_SHA::7}` (immutable)'
+          } >> "$GITHUB_STEP_SUMMARY"
