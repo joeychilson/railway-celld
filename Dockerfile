@@ -35,6 +35,6 @@ EXPOSE 8080 8081
 # Railway uses railway.json's healthcheckPath. This also makes the image easy
 # to operate with Docker, Podman, or Compose outside Railway.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD-SHELL curl --noproxy '*' -fsS "http://127.0.0.1:${PORT:-8080}/__celld/health" >/dev/null || exit 1
+  CMD curl --noproxy '*' -fsS "http://127.0.0.1:${PORT:-8080}/__celld/health" >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/railway-celld-entrypoint"]
