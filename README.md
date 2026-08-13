@@ -1,5 +1,7 @@
 # celld on Railway
 
+[![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/celld-for-railway?referralCode=NhCCIt&utm_medium=integration&utm_source=template&utm_campaign=generic)
+
 A Railway-optimized template for [celld](https://celld.dev): self-hosted,
 distributed Cloudflare Workers and Durable Objects with one SQLite database per
 object.
