@@ -103,9 +103,12 @@ railway_pointer_status() {
 
   # New Railway Buckets use this virtual-hosted endpoint. Refuse to guess for
   # other providers or legacy path-style buckets.
-  case "${S3_ENDPOINT:-}" in
-    https://storage.railway.app|https://storage.railway.app/)
-      pointer_url="https://${bucket_name}.storage.railway.app/${object_key}"
+  endpoint="${S3_ENDPOINT:-}"
+  endpoint="${endpoint%/}"
+  case "$endpoint" in
+    https://storage.railway.app|https://*.storageapi.dev)
+      endpoint_authority="${endpoint#https://}"
+      pointer_url="https://${bucket_name}.${endpoint_authority}/${object_key}"
       ;;
     *) return 2 ;;
   esac
@@ -118,7 +121,7 @@ railway_pointer_status() {
   if [ -n "${AWS_SESSION_TOKEN:-}" ]; then
     curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
       --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors \
-      --request HEAD \
+      --head \
       --aws-sigv4 "aws:amz:${signing_region}:s3" \
       --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
       --header "x-amz-security-token: ${AWS_SESSION_TOKEN}" \
@@ -126,7 +129,7 @@ railway_pointer_status() {
   else
     curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
       --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors \
-      --request HEAD \
+      --head \
       --aws-sigv4 "aws:amz:${signing_region}:s3" \
       --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
       "$pointer_url"
