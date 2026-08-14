@@ -21,7 +21,7 @@ concurrency:
 
 env:
   # Keep this at or below the celld version used by the Railway service image.
-  CELLD_VERSION: v0.2.0
+  CELLD_VERSION: v0.2.1
   CELLD_PROJECT_PATH: .
   RAILWAY_SERVICE: celld
   RAILWAY_CLI_VERSION: 5.40.0
