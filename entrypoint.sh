@@ -5,195 +5,128 @@ set -eu
 # files private even when the image is used outside Railway.
 umask 077
 
-CELLD_BINARY="${CELLD_BINARY:-/usr/local/bin/celld}"
-state_root="${CELLD_STATE_ROOT:-/var/lib/celld}"
-public_port="${PORT:-8080}"
-internal_port="${CELLD_INTERNAL_PORT:-8081}"
-bootstrap="${CELLD_BOOTSTRAP:-0}"
-
-valid_port() {
-  case "$1" in
-    ''|*[!0-9]*) return 1 ;;
-  esac
-  [ "$1" -ge 1 ] && [ "$1" -le 65535 ]
-}
-
-if ! valid_port "$public_port"; then
-  echo "ERROR: PORT must be a number from 1 to 65535, not '$public_port'." >&2
-  exit 1
-fi
-if ! valid_port "$internal_port"; then
-  echo "ERROR: CELLD_INTERNAL_PORT must be a number from 1 to 65535, not '$internal_port'." >&2
-  exit 1
-fi
-if [ "$public_port" = "$internal_port" ]; then
-  echo "ERROR: PORT and CELLD_INTERNAL_PORT must use different ports." >&2
-  exit 1
-fi
-case "$bootstrap" in
-  0|1) ;;
-  *) echo "ERROR: CELLD_BOOTSTRAP must be 0 or 1, not '$bootstrap'." >&2; exit 1 ;;
-esac
-
 # Railway private networking may be IPv6-only in legacy environments. A dual-
 # stack bind serves both Railway's public edge and its encrypted private
-# network. The private service DNS name is stable even though container IPs
-# are not.
-if [ -z "${CELLD_ADDR:-}" ]; then
-  CELLD_ADDR="[::]:$public_port"
-  export CELLD_ADDR
-fi
-if [ -z "${CELLD_INTERNAL_ADDR:-}" ]; then
-  CELLD_INTERNAL_ADDR="[::]:$internal_port"
-  export CELLD_INTERNAL_ADDR
-fi
-if [ -z "${CELLD_ADVERTISE:-}" ]; then
-  CELLD_ADVERTISE="${RAILWAY_PRIVATE_DOMAIN:-localhost}:$internal_port"
-  export CELLD_ADVERTISE
-fi
+# network. Peers reach this node by the stable private DNS name, not by its
+# container IP. celld validates both addresses itself and fails fast on a
+# bad or colliding port.
+CELLD_ADDR="${CELLD_ADDR:-[::]:${PORT:-8080}}"
+CELLD_INTERNAL_ADDR="${CELLD_INTERNAL_ADDR:-[::]:${CELLD_INTERNAL_PORT:-8081}}"
+CELLD_ADVERTISE="${CELLD_ADVERTISE:-${RAILWAY_PRIVATE_DOMAIN:-localhost}:${CELLD_INTERNAL_PORT:-8081}}"
+export CELLD_ADDR CELLD_INTERNAL_ADDR CELLD_ADVERTISE
 
-# Runtime mode needs a deployment bucket. Keep celld's own help, version,
-# deploy, diagnose, and test modes usable without imposing this wrapper check.
-if [ "$#" -eq 0 ] \
-  && [ "${CELLD_CLOUD:-0}" != "1" ] \
-  && [ -z "${CELLD_TEST_SCRIPT_PATH:-}" ]; then
-  case "${CELLD_BUCKET:-}" in
-    s3://|gs://|'')
-      cat >&2 <<'EOF'
-ERROR: CELLD_BUCKET is missing or empty.
-
-The Railway template wires this to its Bucket automatically. For a manual
-installation, set CELLD_BUCKET (for example s3://my-celld-bucket) and the
-matching object-storage credentials.
-EOF
-      exit 1
-      ;;
-  esac
-fi
-
-# Railway volumes are mounted root-owned. Create only the two writable cache
-# roots as root, hand those to the unprivileged runtime user, then re-exec this
-# script so celld itself is PID 1 and receives SIGTERM directly.
+# Railway volumes are mounted root-owned. Create the writable roots as root,
+# hand them to the unprivileged runtime user, then re-exec this script so
+# celld itself is PID 1 and receives SIGTERM directly.
 if [ "$(id -u)" = "0" ]; then
-  mkdir -p "$state_root" "$CELLD_WATCH" "$CELLD_ASSET_CACHE_DIR"
-  chown celld:celld "$state_root" "$CELLD_WATCH" "$CELLD_ASSET_CACHE_DIR"
+  mkdir -p /var/lib/celld "$CELLD_WATCH" "$CELLD_ASSET_CACHE_DIR"
+  chown celld:celld /var/lib/celld "$CELLD_WATCH" "$CELLD_ASSET_CACHE_DIR"
   exec gosu celld "$0" "$@"
 fi
 
-if [ -n "${RAILWAY_ENVIRONMENT_ID:-}" ] \
-  && [ "${RAILWAY_VOLUME_MOUNT_PATH:-}" != "$state_root" ]; then
-  echo "WARNING: no Railway volume is mounted at $state_root." >&2
-  echo "WARNING: data remains durable in the bucket, but warm local state and caches" >&2
-  echo "WARNING: will be restored after every redeploy." >&2
-fi
-
-# Return the HTTP status for deploy/current.json in a Railway Bucket. Railway
-# Buckets use Tigris and virtual-hosted S3 URLs. curl signs the HEAD request
-# with SigV4; credentials are never printed.
-railway_pointer_status() {
-  bucket_path="${CELLD_BUCKET#s3://}"
-  bucket_name="${bucket_path%%/*}"
-  if [ "$bucket_path" = "$bucket_name" ]; then
-    object_key="deploy/current.json"
+# HTTP status of deploy/current.json, the fleet-wide deployment pointer.
+# celld addresses every explicit S3 endpoint with path-style requests, so the
+# probe does too: any endpoint that can serve the node can serve this check,
+# on every Railway Bucket generation and any S3-compatible store. curl signs
+# the HEAD with SigV4; credentials are never printed. Returns 2 without an
+# endpoint, 3 without credentials.
+pointer_status() {
+  path="${CELLD_BUCKET#s3://}"
+  bucket="${path%%/*}"
+  if [ "$path" = "$bucket" ]; then
+    key="deploy/current.json"
   else
-    object_prefix="${bucket_path#*/}"
-    object_prefix="${object_prefix%/}"
-    object_key="$object_prefix/deploy/current.json"
+    key="${path#*/}"
+    key="${key%/}/deploy/current.json"
   fi
 
-  # New Railway Buckets use this virtual-hosted endpoint. Refuse to guess for
-  # other providers or legacy path-style buckets.
   endpoint="${S3_ENDPOINT:-}"
-  endpoint="${endpoint%/}"
   case "$endpoint" in
-    https://storage.railway.app|https://*.storageapi.dev)
-      endpoint_authority="${endpoint#https://}"
-      pointer_url="https://${bucket_name}.${endpoint_authority}/${object_key}"
-      ;;
+    https://?*|http://?*) endpoint="${endpoint%/}" ;;
     *) return 2 ;;
   esac
-
   if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
     return 3
   fi
 
-  signing_region="${AWS_REGION:-${AWS_DEFAULT_REGION:-auto}}"
   if [ -n "${AWS_SESSION_TOKEN:-}" ]; then
-    curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-      --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors \
-      --head \
-      --aws-sigv4 "aws:amz:${signing_region}:s3" \
-      --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
-      --header "x-amz-security-token: ${AWS_SESSION_TOKEN}" \
-      "$pointer_url"
-  else
-    curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
-      --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors \
-      --head \
-      --aws-sigv4 "aws:amz:${signing_region}:s3" \
-      --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
-      "$pointer_url"
+    set -- --header "x-amz-security-token: ${AWS_SESSION_TOKEN}"
   fi
+  curl --silent --show-error --output /dev/null --write-out '%{http_code}' \
+    --head --connect-timeout 10 --max-time 30 --retry 2 --retry-all-errors \
+    --aws-sigv4 "aws:amz:${AWS_REGION:-${AWS_DEFAULT_REGION:-auto}}:s3" \
+    --user "${AWS_ACCESS_KEY_ID}:${AWS_SECRET_ACCESS_KEY}" \
+    "$@" "${endpoint}/${bucket}/${key}"
 }
 
+# Install the bundled asset-only starter when the fleet bucket has no
+# deployment yet, so a fresh template serves a page instead of erroring. An
+# existing deployment is never replaced. A failed install exits nonzero for
+# Railway's ALWAYS restart policy to retry.
 bootstrap_starter() {
-  if [ "$bootstrap" != "1" ]; then
-    return
-  fi
-
-  case "${CELLD_BUCKET:-}" in
-    s3://*) ;;
-    *)
-      echo "WARNING: CELLD_BOOTSTRAP supports the Railway template's S3 bucket only; skipping." >&2
-      return
-      ;;
+  case "${CELLD_BOOTSTRAP:-0}" in
+    0) return ;;
+    1) ;;
+    *) echo "ERROR: CELLD_BOOTSTRAP must be 0 or 1, not '${CELLD_BOOTSTRAP:-}'." >&2; exit 1 ;;
   esac
 
-  status=""
-  if status="$(railway_pointer_status)"; then
-    :
-  else
-    rc=$?
-    case "$rc" in
-      2) echo "ERROR: CELLD_BOOTSTRAP=1 requires a new virtual-hosted Railway Bucket." >&2 ;;
+  case "${CELLD_BUCKET:-}" in
+    s3://?*) ;;
+    *) echo "WARNING: CELLD_BOOTSTRAP needs an s3:// bucket; skipping." >&2; return ;;
+  esac
+
+  status="$(pointer_status)" || {
+    case "$?" in
+      2) echo "ERROR: CELLD_BOOTSTRAP=1 requires an http(s) S3_ENDPOINT." >&2 ;;
       3) echo "ERROR: CELLD_BOOTSTRAP=1 requires AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY." >&2 ;;
-      *) echo "ERROR: could not inspect the Railway Bucket for an existing deployment." >&2 ;;
+      *) echo "ERROR: could not inspect the bucket for an existing deployment." >&2 ;;
     esac
     exit 1
-  fi
+  }
 
   case "$status" in
     200)
-      echo "entrypoint: existing celld deployment found; starter left untouched"
-      return
+      echo "entrypoint: existing deployment found; starter left untouched"
       ;;
     404)
-      echo "entrypoint: empty Railway Bucket; installing the celld starter deployment"
-      if "$CELLD_BINARY" deploy /opt/celld/starter; then
-        return
-      fi
-
-      # Another node may have won the compare-and-swap while this one built the
-      # starter. Continue only when the committed pointer now exists.
-      retry_status=""
-      if retry_status="$(railway_pointer_status)" && [ "$retry_status" = "200" ]; then
-        echo "entrypoint: another node committed a deployment first; continuing"
-        return
-      fi
-      echo "ERROR: starter deployment failed and no committed deployment exists." >&2
-      exit 1
+      echo "entrypoint: empty bucket; installing the celld starter deployment"
+      /usr/local/bin/celld deploy /opt/celld/starter
       ;;
     *)
-      echo "ERROR: Railway Bucket returned HTTP $status for deploy/current.json." >&2
+      echo "ERROR: bucket returned HTTP $status for deploy/current.json." >&2
       exit 1
       ;;
   esac
 }
 
-# Only the long-running Railway service (no command arguments) bootstraps.
-# `docker run IMAGE deploy ...` remains an ordinary celld CLI invocation.
+# Only the long-running service (no command arguments) is the Railway node.
+# `docker run IMAGE deploy ...` stays an ordinary celld CLI invocation.
 if [ "$#" -eq 0 ]; then
+  case "${CELLD_BUCKET:-}" in
+    s3://?*|gs://?*) ;;
+    *)
+      # The runtime needs a bucket; celld's own managed and test modes manage
+      # their configuration and stay usable without this wrapper check.
+      if [ "${CELLD_CLOUD:-0}" != "1" ] && [ -z "${CELLD_TEST_SCRIPT_PATH:-}" ]; then
+        cat >&2 <<'EOF'
+ERROR: CELLD_BUCKET is missing or empty.
+
+The Railway template wires this to its Bucket reference automatically. For a
+manual installation, set CELLD_BUCKET (for example s3://my-celld-bucket) plus
+its object-storage credentials.
+EOF
+        exit 1
+      fi
+      ;;
+  esac
+
+  if [ -n "${RAILWAY_ENVIRONMENT_ID:-}" ] \
+    && [ "${RAILWAY_VOLUME_MOUNT_PATH:-}" != "/var/lib/celld" ]; then
+    echo "WARNING: no Railway volume is mounted at /var/lib/celld; warm state and" >&2
+    echo "WARNING: caches will be rebuilt after every redeploy." >&2
+  fi
+
   bootstrap_starter
 fi
 
-exec "$CELLD_BINARY" "$@"
+exec /usr/local/bin/celld "$@"
