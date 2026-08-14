@@ -3,95 +3,113 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>celld is running on Railway</title>
+    <title>celld on Railway</title>
     <style>
       :root {
-        color-scheme: dark;
-        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-        background: #0b0b0d;
-        color: #f5f5f5;
+        color-scheme: light;
       }
-      * { box-sizing: border-box; }
-      body {
+      * {
+        box-sizing: border-box;
         margin: 0;
-        min-height: 100vh;
-        display: grid;
-        place-items: center;
-        background:
-          radial-gradient(circle at 20% 15%, rgba(123, 92, 255, .22), transparent 34rem),
-          radial-gradient(circle at 85% 85%, rgba(70, 190, 255, .13), transparent 28rem),
-          #0b0b0d;
+        padding: 0;
+      }
+      body {
+        background: #e8efe6;
+        color: #0e150f;
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        font-size: 15px;
+        line-height: 1.6;
+        padding: 4rem 1.5rem;
+        display: flex;
+        justify-content: center;
       }
       main {
-        width: min(42rem, calc(100% - 2rem));
-        padding: clamp(1.75rem, 6vw, 3.5rem);
-        border: 1px solid #2a2a30;
-        border-radius: 1.25rem;
-        background: rgba(18, 18, 22, .86);
-        box-shadow: 0 2rem 6rem rgba(0, 0, 0, .35);
-      }
-      .status {
-        display: inline-flex;
-        align-items: center;
-        gap: .55rem;
-        padding: .4rem .7rem;
-        border: 1px solid #285c43;
-        border-radius: 999px;
-        color: #9ff0c3;
-        background: #10281d;
-        font-size: .85rem;
-        font-weight: 650;
-      }
-      .dot {
-        width: .55rem;
-        height: .55rem;
-        border-radius: 50%;
-        background: #51df92;
-        box-shadow: 0 0 1rem #51df92;
+        max-width: 580px;
+        width: 100%;
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
       }
       h1 {
-        margin: 1.5rem 0 .65rem;
-        font-size: clamp(2.2rem, 8vw, 4.5rem);
-        letter-spacing: -.065em;
-        line-height: .95;
+        font-size: 1.75rem;
+        font-weight: 600;
+        letter-spacing: -0.02em;
+        color: #0e150f;
       }
-      p { color: #b9b9c2; line-height: 1.65; }
+      h1 .on {
+        font-weight: 400;
+        color: #6d7c70;
+      }
+      h1 .railway {
+        color: #6c3fe7;
+        font-weight: 600;
+      }
+      p {
+        color: #47564a;
+      }
+      pre {
+        background: #0e150f;
+        border: 1px solid #c1cfc0;
+        border-radius: 6px;
+        padding: 1rem;
+        overflow-x: auto;
+      }
       code {
-        padding: .14rem .35rem;
-        border-radius: .35rem;
-        background: #25252b;
-        color: #e4ddff;
+        font-family: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+        font-size: 13px;
+        color: #e7f3e8;
+        line-height: 1.5;
       }
-      .links { display: flex; flex-wrap: wrap; gap: .75rem; margin-top: 1.75rem; }
+      p code {
+        background: #dbe5d8;
+        color: #0e150f;
+        padding: 0.15em 0.35em;
+        border-radius: 4px;
+        font-size: 13px;
+      }
+      .links {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1.25rem;
+        margin-top: 0.5rem;
+      }
       a {
-        padding: .72rem 1rem;
-        border: 1px solid #35353d;
-        border-radius: .65rem;
-        color: #f5f5f5;
+        color: #256d43;
         text-decoration: none;
-        font-weight: 650;
       }
-      a:first-child { border-color: #7259e8; background: #6247dc; }
-      a:hover { transform: translateY(-1px); filter: brightness(1.1); }
+      a:hover {
+        text-decoration: underline;
+      }
     </style>
   </head>
   <body>
     <main>
-      <span class="status"><span class="dot"></span>Healthy</span>
-      <h1>celld is running.</h1>
+      <h1>celld <span class="on">on</span> <span class="railway">Railway</span></h1>
+
       <p>
-        Your Railway node is connected to durable object storage and ready for
-        a Worker deployment. This starter is installed only when the fleet
-        bucket is empty; deploying your app replaces it.
+        Your node is connected to object storage and ready to run Cloudflare
+        Workers and Durable Objects.
       </p>
+
+      <pre><code># 1. Link to your Railway project
+railway link
+
+# 2. Deploy your Worker
+railway run --service celld --no-local -- celld deploy .
+
+# 3. Restart the node to load the deployment
+railway restart --service celld --yes</code></pre>
+
       <p>
-        Run <code>celld deploy .</code> with this service's Railway variables,
-        then redeploy the node so it loads the new committed version.
+        This starter is installed only when the fleet bucket is empty.
+        Running <code>celld deploy</code> replaces it.
       </p>
-      <div class="links">
-        <a href="https://celld.dev/docs/">Read the celld docs</a>
-        <a href="https://github.com/joeychilson/railway-celld">Template guide</a>
-      </div>
+
+      <nav class="links">
+        <a href="https://celld.dev/docs/">celld docs &rarr;</a>
+        <a href="https://github.com/denoland/celld">celld GitHub &rarr;</a>
+        <a href="https://github.com/joeychilson/railway-celld">Railway template &rarr;</a>
+      </nav>
     </main>
   </body>
 </html>
