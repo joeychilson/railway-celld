@@ -62,10 +62,14 @@ jobs:
         run: |
           sed -i -E "s/^ARG CELLD_VERSION=.*/ARG CELLD_VERSION=${VERSION}/" Dockerfile
           sed -i -E "s/^  CELLD_VERSION: v.*/  CELLD_VERSION: v${VERSION}/" \
-            examples/github-actions/deploy-celld.yml
+            examples/deploy-celld.yml
+          sed -i -E \
+            "s/(CELLD_VERSION=v)[0-9]+\.[0-9]+\.[0-9]+ sh/\1${VERSION} sh/" \
+            README.md
           grep -qxF "ARG CELLD_VERSION=${VERSION}" Dockerfile
           grep -qxF "  CELLD_VERSION: v${VERSION}" \
-            examples/github-actions/deploy-celld.yml
+            examples/deploy-celld.yml
+          grep -qF "CELLD_VERSION=v${VERSION} sh" README.md
 
       - name: Set up Docker Buildx
         if: steps.version.outputs.changed == 'true'
@@ -93,7 +97,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Dockerfile examples/github-actions/deploy-celld.yml
+          git add Dockerfile README.md examples/deploy-celld.yml
           git commit -m "Bump celld from ${OLD_VERSION} to ${NEW_VERSION}"
           git push origin HEAD:main
 
