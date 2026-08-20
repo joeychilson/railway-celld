@@ -15,6 +15,14 @@ CELLD_INTERNAL_ADDR="${CELLD_INTERNAL_ADDR:-[::]:${CELLD_INTERNAL_PORT:-8081}}"
 CELLD_ADVERTISE="${CELLD_ADVERTISE:-${RAILWAY_PRIVATE_DOMAIN:-localhost}:${CELLD_INTERNAL_PORT:-8081}}"
 export CELLD_ADDR CELLD_INTERNAL_ADDR CELLD_ADVERTISE
 
+# Tie celld's node identity to the Railway service and its persistent volume.
+# This stays stable across deployments, while duplicated services get distinct
+# identities. An explicit CELLD_NODE always wins.
+if [ -z "${CELLD_NODE:-}" ] && [ -n "${RAILWAY_SERVICE_ID:-}" ]; then
+  CELLD_NODE="$RAILWAY_SERVICE_ID"
+  export CELLD_NODE
+fi
+
 # Railway volumes are mounted root-owned. Create the writable roots as root,
 # hand them to the unprivileged runtime user, then re-exec this script so
 # celld itself is PID 1 and receives SIGTERM directly.
@@ -103,17 +111,17 @@ bootstrap_starter() {
 # `docker run IMAGE deploy ...` stays an ordinary celld CLI invocation.
 if [ "$#" -eq 0 ]; then
   case "${CELLD_BUCKET:-}" in
-    s3://?*|gs://?*) ;;
+    s3://?*) ;;
     *)
       # The runtime needs a bucket; celld's own managed and test modes manage
       # their configuration and stay usable without this wrapper check.
       if [ "${CELLD_CLOUD:-0}" != "1" ] && [ -z "${CELLD_TEST_SCRIPT_PATH:-}" ]; then
         cat >&2 <<'EOF'
-ERROR: CELLD_BUCKET is missing or empty.
+ERROR: CELLD_BUCKET must be a non-empty s3:// bucket.
 
-The Railway template wires this to its Bucket reference automatically. For a
-manual installation, set CELLD_BUCKET (for example s3://my-celld-bucket) plus
-its object-storage credentials.
+The Railway template wires this to its Railway Bucket reference automatically.
+For a manual installation, set CELLD_BUCKET (for example
+s3://my-celld-bucket) plus its S3 credentials.
 EOF
         exit 1
       fi

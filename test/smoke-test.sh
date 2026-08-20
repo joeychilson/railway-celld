@@ -46,7 +46,7 @@ docker run --rm "$IMAGE" >"$LOG" 2>&1
 rc=$?
 set -e
 [[ "$rc" -eq 1 ]] || fail "empty runtime config exited $rc, expected 1"
-grep -q 'CELLD_BUCKET is missing or empty' "$LOG" \
+grep -q 'CELLD_BUCKET must be a non-empty s3:// bucket' "$LOG" \
   || fail "missing CELLD_BUCKET error was not actionable"
 pass "empty runtime config fails closed"
 
@@ -57,6 +57,7 @@ docker run -d --name "$NAME" \
   --mount "type=bind,src=$ROOT/test/fixtures/worker.js,dst=/tmp/worker.js,readonly" \
   -e CELLD_TEST_SCRIPT_PATH=/tmp/worker.js \
   -e CELLD_BOOTSTRAP=0 \
+  -e RAILWAY_SERVICE_ID=railway-service-smoke \
   -e PORT=8080 \
   -p "127.0.0.1:${PORT}:8080" \
   "$IMAGE" >/dev/null
@@ -81,6 +82,12 @@ uid="$(docker exec "$NAME" stat -c '%u' /var/lib/celld/state)"
 process_uid="$(docker exec "$NAME" sh -c "awk '/^Uid:/ { print \$2 }' /proc/1/status")"
 [[ "$process_uid" = "10001" ]] || fail "PID 1 UID is $process_uid, expected 10001"
 pass "runtime is unprivileged and can write the root-owned volume"
+
+node_id="$(docker exec "$NAME" sh -c \
+  "tr '\\0' '\\n' </proc/1/environ | sed -n 's/^CELLD_NODE=//p'")"
+[[ "$node_id" = "railway-service-smoke" ]] \
+  || fail "PID 1 CELLD_NODE is '$node_id', expected railway-service-smoke"
+pass "Railway service ID becomes the stable celld node ID"
 
 echo "==> graceful stop"
 docker stop --time 40 "$NAME" >/dev/null

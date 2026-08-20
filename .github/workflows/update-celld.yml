@@ -1,17 +1,17 @@
 name: update-celld
 
-# Keep the template on an immutable, tested celld release instead of pulling a
-# mutable `latest` tag into production. A new official release is committed to
-# main only after the Railway wrapper and starter pass their smoke tests. The
-# copy-ready application deployment workflow is kept on the same celld version.
+# Keep the template on a tested celld release instead of pulling upstream
+# `latest` into production. New official releases are built and smoke-tested,
+# then proposed in a PR so their compatibility notes are reviewed before merge.
+# Merging the PR publishes the approved wrapper through publish-image.yml.
 on:
   schedule:
     - cron: "17 */6 * * *"
   workflow_dispatch:
 
 permissions:
-  actions: write
   contents: write
+  pull-requests: write
 
 concurrency:
   group: update-celld
@@ -47,6 +47,7 @@ jobs:
 
           echo "latest=$latest" >> "$GITHUB_OUTPUT"
           echo "current=$current" >> "$GITHUB_OUTPUT"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if [ "$latest" != "$current" ]; then
             echo "changed=true" >> "$GITHUB_OUTPUT"
             echo "Updating celld $current -> $latest"
@@ -55,8 +56,29 @@ jobs:
             echo "Already current ($current)"
           fi
 
-      - name: Update the immutable celld pins
+      - name: Check for an existing update PR
         if: steps.version.outputs.changed == 'true'
+        id: pull_request
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.latest }}
+        run: |
+          branch="automation/celld-${VERSION}"
+          number="$(gh pr list \
+            --base main \
+            --head "$branch" \
+            --state open \
+            --json number \
+            --jq '.[0].number // empty')"
+          if [ -n "$number" ]; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Update PR #${number} is already open"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update the celld version pins
+        if: steps.version.outputs.changed == 'true' && steps.pull_request.outputs.exists != 'true'
         env:
           VERSION: ${{ steps.version.outputs.latest }}
         run: |
@@ -72,11 +94,11 @@ jobs:
           grep -qF "CELLD_VERSION=v${VERSION} sh" README.md
 
       - name: Set up Docker Buildx
-        if: steps.version.outputs.changed == 'true'
+        if: steps.version.outputs.changed == 'true' && steps.pull_request.outputs.exists != 'true'
         uses: docker/setup-buildx-action@bb05f3f5519dd87d3ba754cc423b652a5edd6d2c # v4.2.0
 
       - name: Build candidate image
-        if: steps.version.outputs.changed == 'true'
+        if: steps.version.outputs.changed == 'true' && steps.pull_request.outputs.exists != 'true'
         uses: docker/build-push-action@53b7df96c91f9c12dcc8a07bcb9ccacbed38856a # v7.3.0
         with:
           context: .
@@ -86,25 +108,41 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Smoke test candidate
-        if: steps.version.outputs.changed == 'true'
+        if: steps.version.outputs.changed == 'true' && steps.pull_request.outputs.exists != 'true'
         run: ./test/smoke-test.sh railway-celld:candidate
 
-      - name: Commit tested update
-        if: steps.version.outputs.changed == 'true'
-        env:
-          OLD_VERSION: ${{ steps.version.outputs.current }}
-          NEW_VERSION: ${{ steps.version.outputs.latest }}
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add Dockerfile README.md examples/deploy-celld.yml
-          git commit -m "Bump celld from ${OLD_VERSION} to ${NEW_VERSION}"
-          git push origin HEAD:main
-
-      # Pushes made with GITHUB_TOKEN do not trigger another workflow. Dispatch
-      # publication explicitly so every tested upstream bump reaches GHCR.
-      - name: Publish the updated image
-        if: steps.version.outputs.changed == 'true'
+      - name: Open tested update PR
+        if: steps.version.outputs.changed == 'true' && steps.pull_request.outputs.exists != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-        run: gh workflow run publish-image.yml --ref main -R ${{ github.repository }}
+          OLD_VERSION: ${{ steps.version.outputs.current }}
+          NEW_VERSION: ${{ steps.version.outputs.latest }}
+          RELEASE_TAG: ${{ steps.version.outputs.tag }}
+        run: |
+          branch="automation/celld-${NEW_VERSION}"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -B "$branch"
+          git add Dockerfile README.md examples/deploy-celld.yml
+          git commit -m "Bump celld from ${OLD_VERSION} to ${NEW_VERSION}"
+          # Reuse the automation branch if an earlier update PR was closed.
+          git push --force-with-lease --set-upstream origin "$branch"
+
+          body_file="${RUNNER_TEMP}/celld-update.md"
+          {
+            echo "Updates the Railway wrapper from celld ${OLD_VERSION} to ${NEW_VERSION}."
+            echo
+            echo "The candidate image and wrapper smoke test passed before this PR was opened."
+            echo
+            echo "Before merging, review the release notes for rolling-upgrade and downgrade constraints."
+            echo
+            echo "## Upstream release notes"
+            echo
+            gh api "repos/denoland/celld/releases/tags/${RELEASE_TAG}" --jq .body
+          } > "$body_file"
+
+          gh pr create \
+            --base main \
+            --head "$branch" \
+            --title "Bump celld from ${OLD_VERSION} to ${NEW_VERSION}" \
+            --body-file "$body_file"

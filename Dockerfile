@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1.7
 
-# Pin an immutable upstream release. .github/workflows/update-celld.yml checks
-# for new celld releases, builds and smoke-tests them, then updates this pin.
+# Pin an explicit upstream release. .github/workflows/update-celld.yml checks
+# for new celld releases, builds and smoke-tests them, then proposes an update.
 ARG CELLD_VERSION=0.3.0
 FROM ghcr.io/denoland/celld:${CELLD_VERSION}
 

@@ -19,8 +19,9 @@ HTTPS on port `8080`, and private peer networking on `8081`.
           local SQLite + caches (warm state only)
 ```
 
-celld is alpha software. The Bucket is the durable store; back it up before
-trusting it with production data.
+celld is alpha software. The Bucket is the durable store for the default
+single-node template; use the backup procedure below before trusting it with
+production data.
 
 ## Deploy your Worker
 
@@ -65,6 +66,8 @@ pointer. Run separate apps in separate buckets, or use a distinct
 | `CELLD_ASSET_CACHE_BYTES` | `134217728` | Upstream default is 512 MiB |
 
 Raise the cache limits if you attach a larger volume.
+The entrypoint automatically uses Railway's stable `RAILWAY_SERVICE_ID` as
+`CELLD_NODE`; an explicitly configured `CELLD_NODE` takes precedence.
 
 ## Railway deployment settings
 
@@ -94,6 +97,47 @@ command. Roll nodes one at a time and check the
 release may require a coordinated, non-rolling upgrade. The default one-node
 service disables deploy overlap for the same reason.
 
+Starting with celld v0.3, a fleet of two or more nodes acknowledges a write
+after another node has persisted it, then uploads it to the Bucket in the
+background. In that configuration each node's volume can temporarily contain
+acknowledged data that has not reached the Bucket yet. Treat every node volume
+as durability-critical, watch its disk usage, and stop nodes gracefully. This
+does not change the default single-node template's Bucket-synchronous behavior.
+
+## Operations
+
+The Railway CLI is an operator tool; it is not installed in the production
+image. To run celld's diagnostics inside the deployed service:
+
+```bash
+railway link
+railway ssh --service celld -- celld diagnose
+```
+
+Railway's healthcheck gates a new deployment but is not a continuous uptime
+monitor. Monitor the public `/__celld/health` endpoint separately for a
+production service. Keep port `8081` private.
+
+### Back up and restore the Bucket
+
+Railway volume backups do not include the Railway Bucket, and Railway Buckets
+do not currently provide point-in-time snapshots or object versioning. For a
+consistent backup, stop application writes and the celld node, then download
+the Bucket with the Railway CLI and AWS CLI installed locally:
+
+```bash
+mkdir celld-backup-YYYYMMDD
+cd celld-backup-YYYYMMDD
+railway run --service celld --no-local -- \
+  sh -c 'aws s3 sync "$CELLD_BUCKET" . --endpoint-url "$S3_ENDPOINT" --no-progress'
+```
+
+Restart the node after the download finishes. To restore, create a fresh
+Railway Bucket, keep `CELLD_BOOTSTRAP=0`, upload this directory to that Bucket
+with `aws s3 sync`, change the celld service's Bucket reference variables, and
+then redeploy. Restoring into a fresh Bucket avoids deleting or partially
+overwriting the original.
+
 ## Security
 
 - Port `8081` serves unauthenticated operator routes. The Railway private
@@ -106,13 +150,19 @@ service disables deploy overlap for the same reason.
 ## Updates
 
 The template image is `ghcr.io/joeychilson/railway-celld:latest` — not the raw
-upstream `latest`. This repo pins an immutable celld release, and CI builds,
-smoke-tests, and only then publishes the wrapper (AMD64 + ARM64). A scheduled
-workflow bumps the pin when a new upstream release passes the same tests, so
-enabling Railway image auto-updates keeps you on tested releases.
+upstream `latest`. This repo pins an explicit celld release. A scheduled
+workflow builds and smoke-tests each new upstream release, then opens a PR with
+its release notes for compatibility review. Merging that PR publishes the
+approved wrapper (AMD64 + ARM64), so Railway image auto-updates only receive
+reviewed releases.
 `celld-<version>` is a mutable channel for the latest wrapper revision on that
 celld release. Unique `<version>-r<run>.<attempt>` tags and source-specific
 `sha-<commit>` tags are available for pinning and rollback.
+
+Do not assume every downgrade is safe. In particular, before downgrading a
+multi-node fleet from celld v0.3 to v0.2, verify every node shut down with a
+`node-log close: sealed epoch` message so no acknowledged write remains only in
+the v0.3 replicated log.
 
 ## Local development
 
