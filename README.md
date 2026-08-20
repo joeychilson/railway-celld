@@ -29,7 +29,7 @@ bucket, then restart the node. From your Wrangler project:
 
 ```bash
 # One-time local tools
-curl -fsSL https://celld.dev/install.sh | CELLD_VERSION=v0.2.1 sh
+curl -fsSL https://celld.dev/install.sh | CELLD_VERSION=v0.3.0 sh
 npm install --global esbuild  # Worker code needs it; asset-only projects do not
 
 railway link

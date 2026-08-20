@@ -2,7 +2,7 @@
 
 # Pin an immutable upstream release. .github/workflows/update-celld.yml checks
 # for new celld releases, builds and smoke-tests them, then updates this pin.
-ARG CELLD_VERSION=0.2.1
+ARG CELLD_VERSION=0.3.0
 FROM ghcr.io/denoland/celld:${CELLD_VERSION}
 
 ARG CELLD_VERSION
