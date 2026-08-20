@@ -83,10 +83,8 @@ process_uid="$(docker exec "$NAME" sh -c "awk '/^Uid:/ { print \$2 }' /proc/1/st
 [[ "$process_uid" = "10001" ]] || fail "PID 1 UID is $process_uid, expected 10001"
 pass "runtime is unprivileged and can write the root-owned volume"
 
-node_id="$(docker exec "$NAME" sh -c \
-  "tr '\\0' '\\n' </proc/1/environ | sed -n 's/^CELLD_NODE=//p'")"
-[[ "$node_id" = "railway-service-smoke" ]] \
-  || fail "PID 1 CELLD_NODE is '$node_id', expected railway-service-smoke"
+docker logs "$NAME" 2>&1 | grep -q 'node=railway-service-smoke' \
+  || fail "celld did not start as node railway-service-smoke"
 pass "Railway service ID becomes the stable celld node ID"
 
 echo "==> graceful stop"
