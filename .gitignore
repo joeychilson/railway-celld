@@ -1,5 +1,11 @@
 .DS_Store
+Thumbs.db
 .env
 .env.*
 !.env.example
 *.log
+.vscode/
+.idea/
+*.swp
+*.swo
+*~

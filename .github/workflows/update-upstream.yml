@@ -1,0 +1,83 @@
+name: update-upstream
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+
+concurrency:
+  group: update-upstream
+  cancel-in-progress: false
+
+jobs:
+  celld:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7.0.1
+
+      - name: Check latest celld release
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="$(gh api repos/denoland/celld/releases/latest --jq .tag_name)"
+          latest="${tag#v}"
+          current="$(sed -n 's/^ARG CELLD_VERSION=//p' Dockerfile)"
+          if ! printf '%s' "$latest" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Unexpected celld release: $tag" >&2
+            exit 1
+          fi
+          if ! printf '%s' "$current" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "Unexpected CELLD_VERSION: $current" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "latest=$latest" >> "$GITHUB_OUTPUT"
+          echo "current=$current" >> "$GITHUB_OUTPUT"
+          if [ "$latest" != "$current" ]; then
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Update version pins
+        if: steps.version.outputs.changed == 'true'
+        env:
+          VERSION: ${{ steps.version.outputs.latest }}
+        run: |
+          sed -i -E "s/^ARG CELLD_VERSION=.*/ARG CELLD_VERSION=${VERSION}/" Dockerfile
+          sed -i -E "s/^  CELLD_VERSION: v.*/  CELLD_VERSION: v${VERSION}/" examples/deploy-celld.yml
+          sed -i -E "s/(CELLD_VERSION=v)[0-9]+\.[0-9]+\.[0-9]+ sh/\1${VERSION} sh/" README.md
+          grep -qxF "ARG CELLD_VERSION=${VERSION}" Dockerfile
+          grep -qxF "  CELLD_VERSION: v${VERSION}" examples/deploy-celld.yml
+          grep -qF "CELLD_VERSION=v${VERSION} sh" README.md
+
+      - name: Open pull request
+        id: pr
+        if: steps.version.outputs.changed == 'true'
+        uses: peter-evans/create-pull-request@v8.1.1
+        with:
+          branch: update/celld
+          commit-message: "Bump celld to ${{ steps.version.outputs.latest }}"
+          title: "Bump celld to ${{ steps.version.outputs.latest }}"
+          body: |
+            Updates celld from `${{ steps.version.outputs.current }}` to `${{ steps.version.outputs.latest }}`.
+
+            Release notes: https://github.com/denoland/celld/releases/tag/${{ steps.version.outputs.tag }}
+
+            CI smoke-tests this change. Review the upstream release notes before merging, then publish a wrapper patch release.
+          delete-branch: true
+
+      - name: Run CI on update branch
+        if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_BRANCH: ${{ steps.pr.outputs.pull-request-branch }}
+        run: gh workflow run ci.yml --ref "$PR_BRANCH" --repo "${{ github.repository }}"

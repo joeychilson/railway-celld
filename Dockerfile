@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1.7
 
-# Pin an explicit upstream release. .github/workflows/update-celld.yml checks
+# Pin an explicit upstream release. .github/workflows/update-upstream.yml checks
 # for new celld releases, builds and smoke-tests them, then proposes an update.
 ARG CELLD_VERSION=0.3.0
 FROM ghcr.io/denoland/celld:${CELLD_VERSION}
@@ -32,8 +32,8 @@ COPY --chown=celld:celld starter/ /opt/celld/starter/
 
 EXPOSE 8080 8081
 
-# Railway uses railway.json's healthcheckPath. This also makes the image easy
-# to operate with Docker, Podman, or Compose outside Railway.
+# Railway templates configure their own healthcheck path. This image-level
+# check also makes the image easy to operate with other container runtimes.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD curl --noproxy '*' -fsS "http://127.0.0.1:${PORT:-8080}/__celld/health" >/dev/null || exit 1
 

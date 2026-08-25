@@ -1,6 +1,7 @@
 # celld on Railway
 
-[![CI](https://github.com/joeychilson/railway-celld/actions/workflows/test.yml/badge.svg)](https://github.com/joeychilson/railway-celld/actions/workflows/test.yml)
+[![CI](https://github.com/joeychilson/railway-celld/actions/workflows/ci.yml/badge.svg)](https://github.com/joeychilson/railway-celld/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/joeychilson/railway-celld)](https://github.com/joeychilson/railway-celld/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
 A Railway template for running [celld](https://celld.dev), a self-hosted
@@ -71,8 +72,8 @@ The entrypoint uses Railway's stable `RAILWAY_SERVICE_ID` as `CELLD_NODE`
 unless `CELLD_NODE` is set explicitly. Increase the cache limits when using a
 larger volume.
 
-For a manual Railway deployment, use the image
-`ghcr.io/joeychilson/railway-celld:latest` with these service settings:
+For a manual Railway deployment, use
+`ghcr.io/joeychilson/railway-celld:<version>` with these service settings:
 
 - One replica with Serverless sleeping disabled.
 - A volume mounted at `/var/lib/celld`.
@@ -136,14 +137,16 @@ variables, and redeploy.
 
 ## Updates
 
-The template uses `ghcr.io/joeychilson/railway-celld:latest`, a reviewed update
-channel rather than the raw upstream image. A scheduled workflow builds and
-smoke-tests new celld releases, then opens a pull request for compatibility
-review.
+Images are published only from GitHub releases. The wrapper uses its own
+semantic version, independently from celld. Exact `X.Y.Z` and `sha-<commit>`
+tags are immutable, while `X.Y` tracks the latest compatible patch release.
+There is no `latest` tag.
 
-The `celld-<version>` tag tracks wrapper updates for a celld release. Unique
-`<version>-r<run>.<attempt>` tags and source-specific `sha-<commit>` tags are
-available for pinning and rollback.
+The `celld-<version>` tag identifies the newest wrapper release built with a
+specific celld version. A scheduled workflow checks for new celld releases and
+opens a pull request; each update is smoke-tested and reviewed before a wrapper
+release publishes the image. See [RELEASING.md](RELEASING.md) for the release
+policy.
 
 ## Development
 
