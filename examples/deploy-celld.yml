@@ -13,15 +13,14 @@ permissions:
   attestations: read
 
 # celld publishes one fleet-wide deployment pointer. Never let two deploys race
-# or cancel a run after it has committed the pointer but before it restarts the
-# node.
+# or cancel a run after it has committed the pointer.
 concurrency:
   group: celld-production
   cancel-in-progress: false
 
 env:
   # Keep this at or below the celld version used by the Railway service image.
-  CELLD_VERSION: v0.3.0
+  CELLD_VERSION: v0.4.0
   CELLD_PROJECT_PATH: .
   RAILWAY_SERVICE: celld
   RAILWAY_CLI_VERSION: 5.40.0
@@ -95,17 +94,10 @@ jobs:
           railway run --service "$RAILWAY_SERVICE" --no-local -- \
             celld deploy "$CELLD_PROJECT_PATH"
 
-      # Existing nodes keep serving their startup deployment. Railway restart
-      # reuses the tested image and waits until its healthcheck passes.
-      - name: Restart celld node
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_TOKEN }}
-        run: railway restart --service "$RAILWAY_SERVICE" --yes
-
       - name: Deployment summary
         run: |
           {
             echo '### celld deployment complete'
             echo
-            echo "Committed the application with \`${CELLD_VERSION}\` and restarted Railway service \`${RAILWAY_SERVICE}\`."
+            echo "Committed the application with \`${CELLD_VERSION}\`. Running nodes adopt it automatically."
           } >> "$GITHUB_STEP_SUMMARY"

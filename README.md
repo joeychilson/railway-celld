@@ -28,16 +28,15 @@ deployment. Keep the Bucket and service in the same Railway region.
 
 ## Deploy a Worker
 
-A node loads its deployment at startup. Deploy the Worker to the Bucket, then
-restart the service to load it:
+A running node checks the Bucket for new deployments every 30 seconds and
+adopts them without restarting. Deploy the Worker to the Bucket:
 
 ```text
-curl -fsSL https://celld.dev/install.sh | CELLD_VERSION=v0.3.0 sh
+curl -fsSL https://celld.dev/install.sh | CELLD_VERSION=v0.4.0 sh
 npm install --global esbuild
 
 railway link
 railway run --service celld --no-local -- celld deploy .
-railway restart --service celld --yes
 ```
 
 Worker code requires `esbuild`; asset-only projects do not.
@@ -45,7 +44,7 @@ Worker code requires `esbuild`; asset-only projects do not.
 For continuous deployment, copy
 [`examples/deploy-celld.yml`](examples/deploy-celld.yml) into the Worker
 repository and add a `RAILWAY_TOKEN` project secret. The workflow installs the
-pinned tools, deploys the Worker, and restarts the service.
+pinned tools and deploys the Worker. Running nodes adopt it automatically.
 
 Use one application per Bucket. To host multiple applications, give each one a
 separate Bucket or a distinct `CELLD_BUCKET=s3://bucket/prefix` value.
@@ -78,7 +77,7 @@ For a manual Railway deployment, use
 - One replica with Serverless sleeping disabled.
 - A volume mounted at `/var/lib/celld`.
 - A public domain attached to port `8080`; never expose port `8081`.
-- Healthcheck path `/__celld/health` with a 300-second timeout.
+- Healthcheck path `/.well-known/celld/health` with a 300-second timeout.
 - Restart policy `Always`, deployment overlap `0`, and a 45-second draining
   time.
 
@@ -108,8 +107,9 @@ railway link
 railway ssh --service celld -- celld diagnose
 ```
 
-Railway checks `/__celld/health` during deployment, but it is not a continuous
-uptime monitor. Monitor that endpoint separately for production services.
+Railway checks `/.well-known/celld/health` during deployment, but it is not a
+continuous uptime monitor. Monitor that endpoint separately for production
+services.
 
 ### Backup and restore
 
@@ -147,6 +147,13 @@ specific celld version. A scheduled workflow checks for new celld releases and
 opens a pull request; each update is smoke-tested and reviewed before a wrapper
 release publishes the image. See [RELEASING.md](RELEASING.md) for the release
 policy.
+
+The celld 0.3.0 to 0.4.0 upgrade is a stop-the-fleet upgrade. Stop every
+0.3.0 node before starting any 0.4.0 node; the two releases have incompatible
+peer protocols and large Workers KV references. On Railway, stop the active
+deployment before changing the healthcheck path and image. A normal redeploy
+starts the replacement before stopping the old container and is not safe for
+this upgrade.
 
 ## Development
 

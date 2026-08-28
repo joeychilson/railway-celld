@@ -2,7 +2,7 @@
 
 # Pin an explicit upstream release. .github/workflows/update-upstream.yml checks
 # for new celld releases, builds and smoke-tests them, then proposes an update.
-ARG CELLD_VERSION=0.3.0
+ARG CELLD_VERSION=0.4.0
 FROM ghcr.io/denoland/celld:${CELLD_VERSION}
 
 ARG CELLD_VERSION
@@ -35,6 +35,6 @@ EXPOSE 8080 8081
 # Railway templates configure their own healthcheck path. This image-level
 # check also makes the image easy to operate with other container runtimes.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
-  CMD curl --noproxy '*' -fsS "http://127.0.0.1:${PORT:-8080}/__celld/health" >/dev/null || exit 1
+  CMD curl --noproxy '*' -fsS "http://127.0.0.1:${PORT:-8080}/.well-known/celld/health" >/dev/null || exit 1
 
 ENTRYPOINT ["/usr/local/bin/railway-celld-entrypoint"]
