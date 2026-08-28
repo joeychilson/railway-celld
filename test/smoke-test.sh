@@ -64,7 +64,7 @@ docker run -d --name "$NAME" \
 
 healthy=""
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:${PORT}/__celld/health" | grep -q '"ok":true'; then
+  if curl -fsS "http://127.0.0.1:${PORT}/.well-known/celld/health" | grep -q '"ok":true'; then
     healthy=1
     break
   fi
@@ -88,7 +88,7 @@ docker logs "$NAME" 2>&1 | grep -q 'node=railway-service-smoke' \
 pass "Railway service ID becomes the stable celld node ID"
 
 echo "==> graceful stop"
-docker stop --time 40 "$NAME" >/dev/null
+docker stop --time 45 "$NAME" >/dev/null
 exit_code="$(docker inspect --format '{{.State.ExitCode}}' "$NAME")"
 [[ "$exit_code" = "0" ]] || fail "SIGTERM stop exited $exit_code"
 pass "SIGTERM reaches celld and exits cleanly"

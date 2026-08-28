@@ -72,7 +72,7 @@ jobs:
 
             Release notes: https://github.com/denoland/celld/releases/tag/${{ steps.version.outputs.tag }}
 
-            CI smoke-tests this change. Review the upstream release notes before merging, then publish a wrapper patch release.
+            CI smoke-tests this change. Review the upstream release notes before merging, then publish an appropriate wrapper release.
           delete-branch: true
 
       - name: Run CI on update branch
