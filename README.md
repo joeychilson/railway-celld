@@ -32,7 +32,7 @@ A running node checks the Bucket for new deployments every 30 seconds and
 adopts them without restarting. Deploy the Worker to the Bucket:
 
 ```text
-curl -fsSL https://celld.dev/install.sh | CELLD_VERSION=v0.4.0 sh
+curl -fsSL https://celld.dev/install.sh | CELLD_VERSION=v0.4.1 sh
 npm install --global esbuild
 
 railway link
