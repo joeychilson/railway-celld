@@ -2,7 +2,7 @@
 
 # Pin an explicit upstream release. .github/workflows/update-upstream.yml checks
 # for new celld releases, builds and smoke-tests them, then proposes an update.
-ARG CELLD_VERSION=0.4.1
+ARG CELLD_VERSION=0.5.0
 FROM ghcr.io/denoland/celld:${CELLD_VERSION}
 
 ARG CELLD_VERSION
