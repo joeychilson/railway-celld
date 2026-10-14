@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["github>joeychilson/railway-templates"],
+  "ignorePaths": ["**/node_modules/**", "**/test/**"],
+  "github-actions": {
+    "managerFilePatterns": ["/^examples/.+\\.ya?ml$/"]
+  },
+  "customManagers": [
+    {
+      "customType": "regex",
+      "description": "The celld CLI version in the README's install command",
+      "managerFilePatterns": ["/^README\\.md$/"],
+      "matchStrings": ["CELLD_VERSION=(?<currentValue>v\\d+\\.\\d+\\.\\d+)"],
+      "datasourceTemplate": "github-releases",
+      "packageNameTemplate": "denoland/celld",
+      "depNameTemplate": "celld"
+    }
+  ]
+}

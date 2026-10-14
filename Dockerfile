@@ -1,15 +1,7 @@
-# syntax=docker/dockerfile:1.7
-
-# Pin an explicit upstream release. .github/workflows/update-upstream.yml checks
-# for new celld releases, builds and smoke-tests them, then proposes an update.
+# renovate: datasource=github-releases packageName=denoland/celld depName=celld extractVersion=^v(?<version>.+)$
 ARG CELLD_VERSION=0.6.2
-FROM ghcr.io/denoland/celld:${CELLD_VERSION}
 
-ARG CELLD_VERSION
-LABEL org.opencontainers.image.title="celld for Railway" \
-      org.opencontainers.image.description="Railway-optimized celld runtime" \
-      org.opencontainers.image.source="https://github.com/joeychilson/railway-celld" \
-      org.opencontainers.image.base.name="ghcr.io/denoland/celld:${CELLD_VERSION}"
+FROM ghcr.io/denoland/celld:${CELLD_VERSION}
 
 # curl is used only to atomically detect an empty Railway Bucket before
 # installing the starter deployment. gosu lets the runtime drop root after
