@@ -1,6 +1,5 @@
 # celld on Railway
 
-[![CI](https://github.com/joeychilson/railway-celld/actions/workflows/ci.yml/badge.svg)](https://github.com/joeychilson/railway-celld/actions/workflows/ci.yml)
 [![Release](https://img.shields.io/github/v/release/joeychilson/railway-celld)](https://github.com/joeychilson/railway-celld/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
@@ -10,7 +9,7 @@ runtime for Cloudflare Workers and Durable Objects.
 celld is alpha software. Back up important data and test upgrades before using
 it in production.
 
-## Deployment
+## Deploy
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/celld-for-railway?referralCode=NhCCIt&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
@@ -26,7 +25,7 @@ The template provides:
 The Bucket is the durable source of truth for the default single-node
 deployment. Keep the Bucket and service in the same Railway region.
 
-## Deploy a Worker
+## Usage
 
 A running node checks the Bucket for new deployments every 30 seconds and
 adopts them without restarting. Deploy the Worker to the Bucket:
@@ -137,16 +136,19 @@ variables, and redeploy.
 
 ## Updates
 
-Images are published only from GitHub releases. The wrapper uses its own
-semantic version, independently from celld. Exact `X.Y.Z` and `sha-<commit>`
-tags are immutable, while `X.Y` tracks the latest compatible patch release.
-There is no `latest` tag.
+Each release is published as `ghcr.io/joeychilson/railway-celld:X.Y.Z` and
+moves the `X.Y` tag to it. The Railway template deploys `X.Y`. A minor or major
+release starts a new `X.Y` tag, and its release notes say what to change before
+you move to it. Older images also have `celld-<version>` tags, which are no
+longer published.
 
-The `celld-<version>` tag identifies the newest wrapper release built with a
-specific celld version. A scheduled workflow checks for new celld releases and
-opens a pull request; each update is smoke-tested and reviewed before a wrapper
-release publishes the image. See [RELEASING.md](RELEASING.md) for the release
-policy.
+[Renovate](https://docs.renovatebot.com) bumps celld in the Dockerfile, this
+README, and the example workflow together. celld is on 0.x, where a minor
+release can break compatibility, so minor updates wait for review and ship as a
+new major release of this template. Patch updates merge after the smoke test
+passes on amd64 and arm64 and publish a patch release. The release policy for
+all of these templates is in
+[railway-templates](https://github.com/joeychilson/railway-templates#releases).
 
 The celld 0.3.0 to 0.4.0 upgrade is a stop-the-fleet upgrade. Stop every
 0.3.0 node before starting any 0.4.0 node; the two releases have incompatible

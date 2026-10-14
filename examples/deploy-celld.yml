@@ -20,10 +20,13 @@ concurrency:
 
 env:
   # Keep this at or below the celld version used by the Railway service image.
+  # renovate: datasource=github-releases packageName=denoland/celld depName=celld
   CELLD_VERSION: v0.6.2
   CELLD_PROJECT_PATH: .
   RAILWAY_SERVICE: celld
+  # renovate: datasource=npm packageName=@railway/cli depName=@railway/cli
   RAILWAY_CLI_VERSION: 5.40.0
+  # renovate: datasource=npm packageName=esbuild depName=esbuild
   ESBUILD_VERSION: 0.28.2
 
 jobs:
