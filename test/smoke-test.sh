@@ -30,13 +30,13 @@ expected="$(sed -n 's/^ARG CELLD_VERSION=//p' "$ROOT/Dockerfile")"
 version="$(docker run --rm "$IMAGE" --version)"
 [[ "$version" == *"$expected"* ]] || fail "expected celld $expected, got: $version"
 pass "$version"
-docker run --rm "$IMAGE" --help | grep -q 'CELLD_INTERNAL_ADDR' \
+docker run --rm "$IMAGE" --help | grep 'CELLD_INTERNAL_ADDR' >/dev/null \
   || fail "celld help does not expose the split internal listener"
 pass "help/version passthrough"
 
 echo "==> bundled starter"
 docker run --rm "$IMAGE" deploy /opt/celld/starter --dry-run \
-  | grep -q 'Current Version ID:' \
+  | grep 'Current Version ID:' >/dev/null \
   || fail "asset-only starter did not build"
 pass "asset-only starter builds without esbuild or a bucket"
 
@@ -53,7 +53,7 @@ pass "empty runtime config fails closed"
 echo "==> runtime"
 docker volume create "$VOLUME" >/dev/null
 docker run -d --name "$NAME" \
-  --mount "type=volume,src=$VOLUME,dst=/var/lib/celld" \
+  --mount "type=volume,src=$VOLUME,dst=/var/lib/celld,volume-nocopy=true" \
   --mount "type=bind,src=$ROOT/test/fixtures/worker.js,dst=/tmp/worker.js,readonly" \
   -e CELLD_TEST_SCRIPT_PATH=/tmp/worker.js \
   -e CELLD_BOOTSTRAP=0 \
@@ -64,7 +64,7 @@ docker run -d --name "$NAME" \
 
 healthy=""
 for _ in $(seq 1 60); do
-  if curl -fsS "http://127.0.0.1:${PORT}/.well-known/celld/health" | grep -q '"ok":true'; then
+  if curl -fsS "http://127.0.0.1:${PORT}/.well-known/celld/health" | grep '"ok":true' >/dev/null; then
     healthy=1
     break
   fi
@@ -83,7 +83,7 @@ process_uid="$(docker exec "$NAME" sh -c "awk '/^Uid:/ { print \$2 }' /proc/1/st
 [[ "$process_uid" = "10001" ]] || fail "PID 1 UID is $process_uid, expected 10001"
 pass "runtime is unprivileged and can write the root-owned volume"
 
-docker logs "$NAME" 2>&1 | grep -q 'node=railway-service-smoke' \
+docker logs "$NAME" 2>&1 | grep 'node=railway-service-smoke' >/dev/null \
   || fail "celld did not start as node railway-service-smoke"
 pass "Railway service ID becomes the stable celld node ID"
 

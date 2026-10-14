@@ -15,7 +15,8 @@ credentials into the service, and exposes only the public Worker listener on
 port `8080`. The operator and peer listener on port `8081` stays on Railway's
 private network. When the Bucket is empty, the node installs a starter page.
 Running nodes check the Bucket every 30 seconds and adopt a new deployment
-without restarting.
+without restarting. Patch releases of the image install automatically during
+Railway's nightly update window.
 
 ## Common Use Cases
 
