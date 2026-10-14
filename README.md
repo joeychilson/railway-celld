@@ -137,10 +137,11 @@ variables, and redeploy.
 ## Updates
 
 Each release is published as `ghcr.io/joeychilson/railway-celld:X.Y.Z` and
-moves the `X.Y` tag to it. The Railway template deploys `X.Y`. A minor or major
-release starts a new `X.Y` tag, and its release notes say what to change before
-you move to it. Older images also have `celld-<version>` tags, which are no
-longer published.
+moves the `X.Y` tag to it. The Railway template deploys `X.Y` with patch
+auto-updates on, so a deployment that keeps that setting picks up patch releases
+in Railway's nightly update window. A minor or major release starts a new `X.Y`
+tag, and its release notes say what to change before you move to it. Older
+images also have `celld-<version>` tags, which are no longer published.
 
 [Renovate](https://docs.renovatebot.com) bumps celld in the Dockerfile, this
 README, and the example workflow together. celld is on 0.x, where a minor
