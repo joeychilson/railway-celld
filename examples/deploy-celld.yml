@@ -25,7 +25,7 @@ env:
   CELLD_PROJECT_PATH: .
   RAILWAY_SERVICE: celld
   # renovate: datasource=npm packageName=@railway/cli depName=@railway/cli
-  RAILWAY_CLI_VERSION: 5.64.2
+  RAILWAY_CLI_VERSION: 5.66.0
   # renovate: datasource=npm packageName=esbuild depName=esbuild
   ESBUILD_VERSION: 0.28.2
 
