@@ -13,10 +13,10 @@ it in production.
 
 [![Deploy on Railway](https://railway.com/button.svg)](https://railway.com/deploy/celld-for-railway?referralCode=NhCCIt&utm_medium=integration&utm_source=template&utm_campaign=generic)
 
-The template provides:
+The template creates one `celld` service and a Railway Bucket with:
 
-- A tested celld image for AMD64 and ARM64.
-- A Railway Bucket for deployments, databases, and leases.
+- The `ghcr.io/joeychilson/railway-celld` image for amd64 and arm64.
+- The Bucket for deployments, databases, and leases.
 - A volume at `/var/lib/celld` for local SQLite state and caches.
 - Public Worker traffic on port `8080`.
 - Private peer traffic on port `8081`.
