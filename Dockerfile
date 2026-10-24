@@ -1,5 +1,5 @@
 # renovate: datasource=github-releases packageName=denoland/celld depName=celld extractVersion=^v(?<version>.+)$
-ARG CELLD_VERSION=0.6.2
+ARG CELLD_VERSION=0.6.3
 
 FROM ghcr.io/denoland/celld:${CELLD_VERSION}
 
