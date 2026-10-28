@@ -40,7 +40,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v6.5.0
         with:
-          node-version: 24
+          node-version: 26
 
       # Replace this step with pnpm/yarn/bun installation when the application
       # uses another package manager. Asset-only projects can omit it.
